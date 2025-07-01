@@ -1,1 +1,24 @@
-
+{
+  "name": "SID_Measure",
+  "label": "SID Measure",
+  "id": "SID_Measure",
+  "type": "widget",
+  "version": "1.0",
+  "exbVersion": "1.0",
+  "author": "Sidwell Co. - JP Soliz Molina",
+  "description": "Widget used for measuring on the map with lengths",
+  "copyright": "2025",
+  "license": "http://www.apache.org/licenses/LICENSE-2.0",
+  "properties": {
+  },
+  "translatedLocales": [
+    "en"
+  ],
+  "dependency": [
+    "jimu-arcgis"
+  ],
+  "defaultSize": {
+    "width": 400,
+    "height": 400
+  }
+}
