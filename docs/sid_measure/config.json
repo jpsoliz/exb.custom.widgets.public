@@ -1,0 +1,25 @@
+{
+  "locationOptions": [{
+    "id": 1,
+    "label": "Degrees",
+    "type": "DEG",
+    "wkid": 4326
+  }, {
+    "id": 2,
+    "label": "Degrees Minutes Seconds",
+    "type": "DMS",
+    "wkid": 4326
+  }, {
+    "id": 3,
+    "label": "NAD83 AL East (SP Feet)",
+    "type": "CUSTOM",
+    "wkid": 102629
+  }],
+  "locationTool": true,
+  "distanceTool": true,
+  "areaTool": true,
+  "defaultAreaUnit": "imperial",
+  "defaultLengthUnit": "imperial",
+  "pathColor": "#ff8000",
+  "fillColor": "#ff8000"
+}
