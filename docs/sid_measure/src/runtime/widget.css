@@ -1,0 +1,129 @@
+/* widget.css */
+
+.widget-measure {
+  padding: 10px;
+  font-family: 'Arial', sans-serif;
+}
+
+.widget-controls {
+  margin-top: 10px;
+}
+
+.widget-controls select {
+  margin-right: 8px;
+  padding: 6px 12px;
+  font-size: 14px;
+  border-radius: 4px;
+}
+
+.custom-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.custom-toolbar button {
+  width: 40px;
+  height: 40px;
+  padding: 4px;
+  border: none;
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.custom-toolbar button img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.custom-toolbar button.active {
+  background-color: #e0f0ff;
+  border-radius: 4px;
+}
+
+.sketch-container {
+  margin-top: 10px;
+  height: 300px;
+  border: 1px solid #ccc;
+  padding: 4px;
+  border-radius: 4px;
+  background-color: #eff1f8;
+}
+
+.results-display {
+  margin-top: 10px;
+  font-weight: bold;
+  font-size: 14px;
+}
+.widget-controls select {
+  display: block;
+  margin-top: 8px;
+}
+
+
+/*
+.widget-measure {
+  padding: 10px;
+  font-family: 'Arial', sans-serif;
+}
+
+.widget-controls {
+  margin-top: 10px;
+}
+
+.widget-controls select {
+  display: block;
+  margin-top: 10px;
+  padding: 6px 12px;
+  font-size: 14px;
+  border-radius: 4px;
+}
+
+.custom-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.custom-toolbar button {
+  width: 40px;
+  height: 40px;
+  padding: 4px;
+  border: none;
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.custom-toolbar button img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.custom-toolbar button.active {
+  background-color: #e0f0ff;
+  border-radius: 4px;
+}
+
+.results-display {
+  font-weight: bold;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+.sketch-container {
+  margin-top: 10px;
+  height: 300px;
+  border: 1px solid #ccc;
+  padding: 4px;
+  border-radius: 4px;
+  background-color: #eff1f8;
+}
+*/
