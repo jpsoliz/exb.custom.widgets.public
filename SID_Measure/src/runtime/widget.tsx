@@ -1,433 +1,247 @@
-/** @jsx jsx */
-/** @jsx jsx */
-import {React, AllWidgetProps, jsx} from 'jimu-core';
-import {Button, WidgetPlaceholder, utils} from 'jimu-ui';
-import { IMConfig } from '../config';
-import {JimuMapView, JimuMapViewComponent} from 'jimu-arcgis';
-import Measurement from 'esri/widgets/Measurement';
-import Point from "esri/geometry/Point";
-import GraphicsLayer from "esri/layers/GraphicsLayer";
-import Graphic from "esri/Graphic";
-import SpatialReference from "esri/geometry/SpatialReference";
-import ProjectParameters from "esri/rest/support/ProjectParameters";
-import GeometryService from "esri/rest/geometryService";
-import esriConfig from "esri/config";
-import geometryEngine from "esri/geometry/geometryEngine";
-import Polyline from "esri/geometry/Polyline";
-import TextSymbol from "esri/symbols/TextSymbol";
-import Polygon from "esri/geometry/Polygon";
-import {getStyle} from './lib/style';
-import defaultMessages from './translations/default';
-import PictureMarkerSymbol from 'esri/symbols/PictureMarkerSymbol';
+import { React, AllWidgetProps, jsx } from 'jimu-core';
+import { JimuMapViewComponent, JimuMapView } from 'jimu-arcgis';
+import Sketch from '@arcgis/core/widgets/Sketch';
+import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
+import Graphic from '@arcgis/core/Graphic';
+import geometryEngine from '@arcgis/core/geometry/geometryEngine';
+import TextSymbol from '@arcgis/core/symbols/TextSymbol';
+import Point from '@arcgis/core/geometry/Point';
+import Polyline from '@arcgis/core/geometry/Polyline';
+import Polygon from '@arcgis/core/geometry/Polygon';
+import './widget.css';
 
-interface State {
-  lineBtnActive: boolean;
-  areaBtnActive: boolean;
-  pointBtnActive: boolean;
-  y: number;
-  x: number;
-  showLocation: boolean;
-  showLocHint: boolean;
-  showLocResults: boolean;
-  cs: string;
-  csWKID: number;
-  xyStr: string;
-  locationStr: string;
-  useLocationTool: boolean;
-  useDistanceTool: boolean;
-  useAreaTool: boolean;
-}
+export default class MeasureWidget extends React.PureComponent<AllWidgetProps<any>, any> {
+  sketch: Sketch;
+  graphicsLayer: GraphicsLayer;
+  state = {
+    jimuMapView: null,
+    activeTool: null,
+    unit: 'feet',
+    areaUnit: 'square-feet',
+    resultText: ''
+  };
 
-const pinIcon = require('./assets/esriGreenPin16x26.png');
-const measureIcon = require('./assets/icon.svg')
+  unitMap = {
+    'meters': 'square-meters',
+    'kilometers': 'square-kilometers',
+    'feet': 'square-feet',
+    'yards': 'square-yards',
+    'miles': 'square-miles',
+    'nautical-miles': 'square-meters',
+    'inches': 'square-inches',
+    'centimeters': 'square-centimeters',
+    'millimeters': 'square-millimeters'
+  };
 
-export default class SID_Measure extends React.PureComponent<AllWidgetProps<IMConfig>, State> {
-  apiWidgetContainer: React.RefObject<HTMLDivElement>;
-  locationDiv: React.RefObject<HTMLDivElement>;
-  measureWidget: Measurement;
-  viewClickHandler: IHandle;
-  geomService: GeometryService;
-  mapView: __esri.MapView | __esri.SceneView;
-  drawLayer: GraphicsLayer;
-  pointSymbol: PictureMarkerSymbol;
+  unitAbbr = {
+    'meters': 'm',
+    'kilometers': 'km',
+    'feet': 'ft',
+    'yards': 'yd',
+    'miles': 'mi',
+    'nautical-miles': 'nmi',
+    'inches': 'in',
+    'centimeters': 'cm',
+    'millimeters': 'mm',
+    'square-meters': 'm²',
+    'square-kilometers': 'km²',
+    'square-feet': 'ft²',
+    'square-yards': 'yd²',
+    'square-miles': 'mi²',
+    'square-inches': 'in²',
+    'square-centimeters': 'cm²',
+    'square-millimeters': 'mm²'
+  };
 
-  constructor(props) {
-    super(props);
-    this.state = {
-      lineBtnActive: false,
-      areaBtnActive: false,
-      pointBtnActive: false,
-      y: null,
-      x: null,
-      showLocation: false,
-      showLocHint: false,
-      showLocResults: false,
-      cs: this.props.config.locationOptions[0].type,
-      csWKID: this.props.config.locationOptions[0].wkid || 4326,
-      xyStr: "",
-      locationStr: "Location (Lat, Lon)",
-      useLocationTool: this.props.config.locationTool,
-      useDistanceTool: this.props.config.distanceTool,
-      useAreaTool: this.props.config.areaTool,
-    }
-    this.apiWidgetContainer = React.createRef();
-    this.locationDiv = React.createRef();
-  }
-  nls = (id: string) => {
-    return this.props.intl ? this.props.intl.formatMessage({ id: id, defaultMessage: defaultMessages[id] }) : id;
-  }
+  activeViewChangeHandler = (jmv: JimuMapView) => {
+    this.setState({ jimuMapView: jmv }, () => {
+      this.graphicsLayer = new GraphicsLayer();
+      jmv.view.map.add(this.graphicsLayer);
 
-  componentDidMount(){
-    this.createAPIWidget();
-  }
-
-  componentWillUnmount(){
-    if(this.measureWidget){
-      this.measureWidget.destroy();
-      this.measureWidget = null;
-    }
-  }
-
-  componentDidUpdate(){
-    this.setState({
-      useLocationTool: this.props.config.locationTool,
-      useDistanceTool: this.props.config.distanceTool,
-      useAreaTool: this.props.config.areaTool,
-    });
-  }
-
-  createAPIWidget(){
-    if(!this.mapView){
-      return;
-    }
-    if(!this.measureWidget && this.apiWidgetContainer.current){
-      this.drawLayer = new GraphicsLayer({id:"DrawGLayer", listMode: "hide"});
-      this.pointSymbol = new PictureMarkerSymbol({url:pinIcon, width: 12, height: 20, yoffset: 10});
-      this.measureWidget = new Measurement({
-        view: this.mapView,
-        container: this.apiWidgetContainer.current
+      this.sketch = new Sketch({
+        view: jmv.view,
+        layer: this.graphicsLayer,
+        creationMode: 'update',
+        visibleElements: {
+          createTools: false,
+          selectionTools: false,
+          settingsMenu: false,
+          undoRedoMenu: false,
+          toolSettings: false
+        },
+        snappingOptions: { enabled: true },
+        visible: false
       });
 
-      const that = this;
-      this.measureWidget.watch("activeWidget", function(evt){
-        if(evt && evt.iconClass === "esri-icon-measure-line"){
-          let pathColor = utils.convertStringColorToJsAPISymbolColor(that.props.config.pathColor, that.props.theme)
-          let hcolor = pathColor, pathPriColor = pathColor;
-          hcolor[3] = 0.8;
-          pathPriColor[3] = 204;
-          evt.viewModel.palette.handleColor = hcolor
-          evt.viewModel.palette.pathPrimaryColor = pathPriColor;
-          evt.viewModel.palette.pathSecondaryColor = [255, 255, 255, 204];
-          evt.viewModel.palette.pathWidth = 4;
-          evt.viewModel.palette.handleWidth = 6;
-        } else if(evt) {
-          let pathColor = utils.convertStringColorToJsAPISymbolColor(that.props.config.pathColor, that.props.theme)
-          let fillColor = utils.convertStringColorToJsAPISymbolColor(that.props.config.fillColor, that.props.theme)
-          let pColor = pathColor, hColor = pathColor, fColor = fillColor;
-          pColor[3] = 0.5
-          hColor[3] = 0.8
-          fColor[3] = 0.3
-          evt.viewModel.palette.pathColor = pColor;
-          evt.viewModel.palette.handleColor = hColor;
-          evt.viewModel.palette.fillColor = fColor;
-          evt.viewModel.palette.handleWidth = 6;
+      this.sketch.on('create', this.handleSketch);
+      this.sketch.on('update', (event) => {
+        if (event.state === 'start') {
+          const graphicId = event.graphics[0]?.uid;
+          this.graphicsLayer.graphics.removeMany(this.graphicsLayer.graphics.filter(g => g.attributes?.label && g.attributes?.source === graphicId));
+        }
+        if (event.state === 'complete') {
+          this.handleSketch({ graphic: event.graphics[0], state: 'complete' });
         }
       });
-    }
-  }
-
-  activeViewChangeHandler = (jimuMapView: JimuMapView) => {
-    if (!jimuMapView) return;
-    this.mapView = jimuMapView.view;
-    jimuMapView.whenJimuMapViewLoaded().then(() => {
-      if (this.drawLayer && !this.mapView.map.findLayerById(this.drawLayer.id)) {
-        this.mapView.map.add(this.drawLayer);
-      };
-      this.mapView.map.allLayers.forEach(layer => console.log("🧱 Layer ID:", layer.id));
     });
-    this.createAPIWidget();
-  }
-  areaMeasurement = () => {
-    if(this.viewClickHandler){
-      this.viewClickHandler.remove();
-      this.viewClickHandler = null;
-    }
-    if(this.state.areaBtnActive){
-      this.clearMeasurements();
-      this.setState({
-        areaBtnActive: false,
-        showLocation: false,
-        showLocHint: true,
-        showLocResults: false
+  };
+
+  handleSketch = (event) => {
+    const { graphic } = event;
+    if (!graphic || !graphic.geometry) return;
+
+    const graphicId = graphic.uid;
+    this.graphicsLayer.graphics.removeMany(this.graphicsLayer.graphics.filter(g => g.attributes?.label && g.attributes?.source === graphicId));
+
+    const geom = graphic.geometry;
+    const { unit, areaUnit } = this.state;
+    const unitLabel = this.unitAbbr[unit] || unit;
+    const areaUnitLabel = this.unitAbbr[areaUnit] || areaUnit;
+
+    let resultText = '';
+
+    if (geom.type === 'polyline') {
+      const polyline = geom as Polyline;
+      let total = 0;
+      polyline.paths.forEach(path => {
+        for (let i = 0; i < path.length - 1; i++) {
+          const start = path[i], end = path[i + 1];
+          const segment = new Polyline({ paths: [[start, end]], spatialReference: polyline.spatialReference });
+          const length = geometryEngine.geodesicLength(segment, unit);
+          total += length;
+          const mid = new Point({ x: (start[0] + end[0]) / 2, y: (start[1] + end[1]) / 2, spatialReference: polyline.spatialReference });
+          this.addLabel(mid, `${length.toFixed(2)} ${unitLabel}`, 10, 'normal', graphicId);
+        }
       });
-      (document.querySelector(".widget-map.esri-view") as HTMLElement).style.cursor = "default";
+      const firstPath = polyline.paths[0];
+      const lastPt = firstPath[firstPath.length - 1];
+      const endLabelPt = new Point({ x: lastPt[0], y: lastPt[1], spatialReference: polyline.spatialReference });
+      this.addLabel(endLabelPt, `Distance: ${total.toFixed(2)} ${unitLabel}`, 14, 'bold', graphicId);
+      resultText = `Distance: ${total.toFixed(2)} ${unitLabel}`;
+    } else if (geom.type === 'polygon') {
+      const polygon = geom as Polygon;
+      const area = geometryEngine.geodesicArea(polygon, areaUnit);
+      let perimeter = 0;
+      polygon.rings.forEach(ring => {
+        for (let i = 0; i < ring.length - 1; i++) {
+          const start = ring[i], end = ring[i + 1];
+          const segment = new Polyline({ paths: [[start, end]], spatialReference: polygon.spatialReference });
+          const length = geometryEngine.geodesicLength(segment, unit);
+          perimeter += length;
+          const mid = new Point({ x: (start[0] + end[0]) / 2, y: (start[1] + end[1]) / 2, spatialReference: polygon.spatialReference });
+          this.addLabel(mid, `${length.toFixed(2)} ${unitLabel}`, 10, 'normal', graphicId);
+        }
+      });
+      try {
+        const center = polygon.centroid;
+        this.addLabel(center, `Area: ${area.toFixed(2)} ${areaUnitLabel}`, 14, 'bold', graphicId);
+      } catch (err) {
+        console.error("Failed to calculate centroid:", err);
+      }
+      resultText = `Area: ${area.toFixed(2)} ${areaUnitLabel}, Perimeter: ${perimeter.toFixed(2)} ${unitLabel}`;
+    }
+
+    this.setState({ resultText });
+  };
+
+  addLabel = (point: Point, text: string, fontSize: number = 11, weight: 'normal' | 'bold' = 'normal', sourceId?: string) => {
+    const symbol = new TextSymbol({
+      text,
+      color: 'white',
+      haloColor: 'black',
+      haloSize: '1.5px',
+      font: { size: fontSize, family: 'Arial', weight },
+      yoffset: 10
+    });
+    const graphic = new Graphic({ geometry: point, symbol, attributes: { label: true, source: sourceId } });
+    this.graphicsLayer.add(graphic);
+  };
+
+  _handleSketchAction = (action: string) => {
+    if (!this.sketch) {
+      console.warn('Sketch tool not ready yet.');
       return;
     }
+
+    switch (action) {
+      case 'polyline':
+        this.sketch.create('polyline');
+        break;
+      case 'polygon':
+        this.sketch.create('polygon');
+        break;
+      case 'select':
+        this.sketch.viewModel.tool = 'select';
+        break;
+      case 'undo':
+        this.sketch.viewModel.undo();
+        break;
+      case 'redo':
+        this.sketch.viewModel.redo();
+        break;
+      case 'delete':
+        this.sketch.delete();
+        if (this.graphicsLayer) {
+          this.graphicsLayer.removeAll(); // Removes both geometry and label graphics
+        }
+        this.setState({ resultText: '' });
+        break;
+      default:
+        break;
+    }
+  };
+
+  _changeUnit = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selected = e.target.value;
     this.setState({
-      showLocation: false,
-      showLocHint: false,
-      showLocResults: false,
-      lineBtnActive: false,
-      areaBtnActive: true,
-      pointBtnActive: false
-    });
-
-    this.measureWidget.activeTool = "area";
-    this.measureWidget.areaUnit = this.props.config.defaultAreaUnit as __esri.units.SystemOrAreaUnit;
-
-    // 🧠 Hook for segment labeling
-    const handler = this.measureWidget.watch("measurement", (measurement) => {
-      if (measurement?.geometry?.type === "polygon") {
-        this.labelPolygonSegments(measurement.geometry as Polygon);
-        console.log("Polygon measured:", measurement.geometry);
-        handler.remove();
+      unit: selected,
+      areaUnit: this.unitMap[selected] || 'square-meters'
+    }, () => {
+      if (!this.graphicsLayer) {
+        console.warn('Graphics layer not ready yet.');
+        return;
+      }
+      const editableGraphics = this.graphicsLayer.graphics.filter(g => !g.attributes?.label);
+      if (editableGraphics.length) {
+        this.handleSketch({ graphic: editableGraphics.getItemAt(0), state: 'complete' });
       }
     });
-  }
-
-  labelPolygonSegments = (polygon: Polygon) => {
-    const unit = this.props.config.defaultLengthUnit || "meters";
-
-    polygon.rings.forEach((ring) => {
-      for (let i = 0; i < ring.length - 1; i++) {
-        const start = ring[i];
-        const end = ring[i + 1];
-
-        const segmentLine = new Polyline({
-          paths: [[start, end]],
-          spatialReference: polygon.spatialReference
-        });
-
-        const length = geometryEngine.geodesicLength(segmentLine, unit);
-        const label = `${length.toFixed(2)} ${unit}`;
-
-        const midPoint = {
-          x: (start[0] + end[0]) / 2,
-          y: (start[1] + end[1]) / 2,
-          spatialReference: polygon.spatialReference
-        };
-
-        const textSymbol = new TextSymbol({
-          text: label,
-          color: "black",
-          haloColor: "white",
-          haloSize: "1px",
-          font: { size: 12, family: "Arial" },
-          yoffset: 10
-        });
-
-        const graphic = new Graphic({
-          geometry: midPoint,
-          symbol: textSymbol
-        });
-
-        this.drawLayer.add(graphic);
-      }
-    });
-  }
-  pointMeasurement = () => {
-    if(this.state.pointBtnActive){
-      this.setState({
-        pointBtnActive: false,
-        showLocation: false,
-        showLocHint: true,
-        showLocResults: false
-      });
-      (document.querySelector(".widget-map.esri-view") as HTMLElement).style.cursor = "default";
-      if(this.viewClickHandler){
-        this.viewClickHandler.remove();
-        this.viewClickHandler = null;
-      }
-      this.drawLayer.removeAll();
-      return;
-    }
-    this.measureWidget.clear();
-    this.setState({
-      showLocation: true,
-      showLocHint: true,
-      showLocResults: false,
-      lineBtnActive: false,
-      areaBtnActive: false,
-      pointBtnActive: true
-    });
-    (document.querySelector(".widget-map.esri-view") as HTMLElement).style.cursor = "crosshair";
-    this.viewClickHandler = this.mapView.on('click', (event) => {
-      event.stopPropagation();
-      this.setState({
-        showLocation: true,
-        showLocHint: false,
-        showLocResults: true,
-        y: event.mapPoint.latitude,
-        x: event.mapPoint.longitude
-      });
-      this.setLocationValue();
-      var g = new Graphic({geometry:event.mapPoint, symbol: this.pointSymbol});
-      this.drawLayer.removeAll();
-      this.drawLayer.add(g);
-    });
-  }
-
-  distanceMeasurement = () => {
-    if(this.viewClickHandler){
-      this.viewClickHandler.remove();
-      this.viewClickHandler = null;
-    }
-    if(this.state.lineBtnActive){
-      this.clearMeasurements();
-      this.setState({
-        lineBtnActive: false,
-        showLocation: false,
-        showLocHint: true,
-        showLocResults: false
-      });
-      (document.querySelector(".widget-map.esri-view") as HTMLElement).style.cursor = "default";
-      return;
-    }
-    this.setState({
-      showLocation: false,
-      showLocHint: false,
-      showLocResults: false,
-      lineBtnActive: true,
-      areaBtnActive: false,
-      pointBtnActive: false
-    });
-    this.measureWidget.activeTool = "distance";
-    this.measureWidget.linearUnit = this.props.config.defaultLengthUnit as __esri.units.SystemOrLengthUnit;
-  }
-
-  clearMeasurements = () => {
-    this.setState({
-      showLocation: false,
-      lineBtnActive: false,
-      areaBtnActive: false,
-      pointBtnActive: false
-    });
-    this.measureWidget.clear();
-    (document.querySelector(".widget-map.esri-view") as HTMLElement).style.cursor = "default";
-    if(this.viewClickHandler){
-      this.viewClickHandler.remove();
-      this.viewClickHandler = null;
-    }
-    this.drawLayer.removeAll();
-  }
-  locUnitChange = (evt) => {
-    const value = evt?.target?.value;
-    const wkid = evt?.target?.options[evt?.target?.selectedIndex]?.dataset?.wkid || 0;
-    this.setState({cs: value, csWKID: parseInt(wkid)}, ()=> this.setLocationValue());
-  }
-
-  setLocationValue= () => {
-    if(this.state.cs === 'DMS'){
-      this.setState({xyStr: this.deg_to_dms(this.state.y, false) + ", " + this.deg_to_dms(this.state.x, true), locationStr: "Location (Lat, Lon)"});
-    }else if(this.state.cs === 'CUSTOM'){
-      var projParams = new ProjectParameters();
-      projParams.geometries = [new Point({latitude: this.state.y, longitude: this.state.x})];
-      projParams.outSpatialReference = new SpatialReference({wkid:this.state.csWKID});
-      GeometryService.project(esriConfig.geometryServiceUrl, projParams).then(results=>{
-        const rPnt = results[0] as Point;
-        this.setState({xyStr: rPnt.x.toFixed(6) + ", " + rPnt.y.toFixed(6), locationStr: "Location (X, Y)"});
-      });
-    }else if(this.state.cs === 'DEG'){
-      this.setState({xyStr: this.state.y.toFixed(6) + ", " + this.state.x.toFixed(6), locationStr: "Location (Lat, Lon)"});
-    }
-  }
-
-  deg_to_dms = (deg: number, lng: boolean): string => {
-    var d = parseInt(deg.toString());
-    var minfloat = Math.abs((deg - d) * 60);
-    var m = Math.floor(minfloat);
-    var secfloat = (minfloat - m) * 60;
-    var s = Math.round((secfloat + Number.EPSILON) * 100) / 100
-    d = Math.abs(d);
-    if (s == 60) { m++; s = 0; }
-    if (m == 60) { d++; m = 0; }
-    let dms = {
-      dir: deg < 0 ? lng ? 'W' : 'S' : lng ? 'E' : 'N',
-      deg: d, min: m, sec: s
-    };
-    return `${dms.deg}\u00B0 ${dms.min}' ${dms.sec}" ${dms.dir}`
- }
-
-  getLocationOptions = (): JSX.Element[] => {
-    const optionsArray = [];
-    this.props.config.locationOptions.map((loc) =>{
-      optionsArray.push(<option data-wkid={loc.wkid} value={loc.type}>{loc.label}</option>);
-    });
-    return optionsArray;
-  }
+  };
 
   render() {
-    const useMapWidget = this.props.useMapWidgetIds &&
-                        this.props.useMapWidgetIds[0]
-    const {config} = this.props;
-    const {showLocation, showLocHint, showLocResults, xyStr, locationStr, areaBtnActive, lineBtnActive, pointBtnActive,
-      useLocationTool, useDistanceTool, useAreaTool} = this.state;
-    if(!useMapWidget){
-      return <div className='widget-measure jimu-widget' css={getStyle(this.props.theme, config)}>
-        <WidgetPlaceholder icon={measureIcon} autoFlip message={this.props.intl.formatMessage({ id: '_widgetLabel', defaultMessage: defaultMessages._widgetLabel })} widgetId={this.props.id} />
-      </div>
-    }
-
-    return <div className="widget-measure jimu-widget" css={getStyle(this.props.theme, config)}>
-      {useMapWidget && (
-          <JimuMapViewComponent
-            useMapWidgetId={this.props.useMapWidgetIds?.[0]}
-            onActiveViewChange={this.activeViewChangeHandler}
-          />
-      )}
-      <div id="toolbarDiv" className="esri-component esri-widget">
-        <div className="measureToolbarDiv">
-          {useLocationTool && 
-            <Button className='esri-icon-map-pin' size='sm' type={'default'} active={pointBtnActive}
-              onClick={this.pointMeasurement} title={this.nls('pointMeasureTool')}></Button>
-          }
-          {useDistanceTool &&
-            <Button className='esri-icon-measure-line' size='sm' type={'default'} active={lineBtnActive}
-              onClick={this.distanceMeasurement} title={this.nls('distMeasureTool')}></Button>
-          }
-          {useAreaTool && 
-            <Button className='esri-icon-measure-area' size='sm' type={'default'} active={areaBtnActive}
-             onClick={this.areaMeasurement} title={this.nls('areaMearureTool')}></Button>
-          }
-          <Button className='esri-icon-trash' size='sm' type={'default'}
-            onClick={this.clearMeasurements} title={this.nls('clearMeasure')}></Button>
-        </div>
-      </div>
-      <div className='esri-measurement' ref={this.apiWidgetContainer}></div>
-      {showLocation && 
-        <div className='esri-measurement' ref={this.locationDiv}>
-          <div className='esri-distance-measurement-2d esri-widget esri-widget--panel'>
-            <div className="esri-distance-measurement-2d__container">
-              {showLocHint &&
-                <section className="esri-distance-measurement-2d__hint">
-                  <p className="esri-distance-measurement-2d__hint-text">Click on the map to display the location</p>
-                </section>
-              }
-              {showLocResults &&
-                <div>
-                  <div className="esri-distance-measurement-2d__settings">
-                    <section className="esri-distance-measurement-2d__units">
-                      <label className="esri-distance-measurement-2d__units-label">Unit</label>
-                      <div className="esri-distance-measurement-2d__units-select-wrapper">
-                        <select className="esri-distance-measurement-2d__units-select esri-select" onChange={this.locUnitChange}>
-                          {this.getLocationOptions()}
-                        </select>
-                      </div>
-                    </section>
-                  </div>
-                  <section className="esri-distance-measurement-2d__measurement">
-                    <div className="esri-distance-measurement-2d__measurement-item">
-                      <span className="esri-distance-measurement-2d__measurement-item-title">{locationStr}</span>
-                      <span className="esri-distance-measurement-2d__measurement-item-value">{xyStr}</span>
-                    </div>
-                  </section>
-                </div>
-              }
-            </div>
+    return (
+      <div className='widget-measure'>
+        <JimuMapViewComponent
+          useMapWidgetId={this.props.useMapWidgetIds?.[0]}
+          onActiveViewChange={this.activeViewChangeHandler}
+        />
+        <div className='widget-controls'>
+          <div className='custom-toolbar'>
+            <button onClick={() => this._handleSketchAction('select')}><img src={require('./assets/select-pin.svg')} alt="Select" /></button>
+            <button onClick={() => this._handleSketchAction('polyline')}><img src={require('./assets/measure-line.svg')} alt="Line" /></button>
+            <button onClick={() => this._handleSketchAction('polygon')}><img src={require('./assets/measure-area.svg')} alt="Polygon" /></button>
+            <button onClick={() => this._handleSketchAction('undo')}><img src={require('./assets/undo.svg')} alt="Undo" /></button>
+            <button onClick={() => this._handleSketchAction('redo')}><img src={require('./assets/redo.svg')} alt="Redo" /></button>
+            <button onClick={() => this._handleSketchAction('delete')}>Erase</button>
           </div>
+
+
+
+          <select onChange={this._changeUnit} value={this.state.unit}>
+            <option value='meters'>Meters</option>
+            <option value='kilometers'>Kilometers</option>
+            <option value='feet'>Feet</option>
+            <option value='yards'>Yards</option>
+            <option value='miles'>Miles</option>
+            <option value='nautical-miles'>Nautical Miles</option>
+          </select>
+
+          <div className='results-display'>
+            {this.state.resultText && <div>{this.state.resultText}</div>}
+          </div> 
+
         </div>
-      }
-    </div>;
+      </div>
+    );
   }
 }
-
